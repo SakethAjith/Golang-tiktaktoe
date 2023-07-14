@@ -1,16 +1,19 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
-	"math/rand"
+	"os"
+	"strconv"
 	"strings"
 )
 
 type game struct {
-	board  [][]string
-	turn   bool
-	winner string
-	lim    int
+	board   [][]string
+	turn    bool
+	winner  string
+	lim     int
+	choices map[int]struct{}
 }
 
 func PrintBoard(tiktaktoe *game) {
@@ -33,10 +36,14 @@ func PrintBoard(tiktaktoe *game) {
 }
 
 func makeBoard(tiktaktoe *game) game {
+	num := 1
+	tiktaktoe.choices = map[int]struct{}{}
 	for i := 0; i < tiktaktoe.lim; i++ {
 		res := []string{}
 		for j := 0; j < tiktaktoe.lim; j++ {
-			res = append(res, "")
+			res = append(res, fmt.Sprintf("%d", num))
+			tiktaktoe.choices[num] = struct{}{}
+			num++
 		}
 		tiktaktoe.board = append(tiktaktoe.board, res)
 	}
@@ -46,10 +53,12 @@ func makeBoard(tiktaktoe *game) game {
 func winner(checkStr []string, tiktaktoe *game) (bool, string) {
 	x_string := strings.Repeat("X", tiktaktoe.lim)
 	o_string := strings.Repeat("O", tiktaktoe.lim)
-	if strings.Join(checkStr, "") == x_string {
+	board_string := strings.Join(checkStr, "")
+	fmt.Println(board_string)
+	if board_string == x_string {
 		return true, "X"
 	}
-	if strings.Join(checkStr, "") == o_string {
+	if board_string == o_string {
 		return true, "O"
 	}
 	return false, ""
@@ -63,49 +72,44 @@ func check(tiktaktoe *game) bool {
 
 	board := tiktaktoe.board
 
-	var checkStr []string
+	var RowCheckStr []string
+	var ColCheckStr []string
+	var DiagCheckStr []string
+	var RevDiagCheckStr []string
 
 	//Check Rows
 	for i := 0; i < tiktaktoe.lim; i++ {
-		checkStr = board[i]
-		if res, ans := winner(checkStr, tiktaktoe); res {
+		RowCheckStr = board[i] //Check Rows
+
+		if res, ans := winner(RowCheckStr, tiktaktoe); res {
 			tiktaktoe.winner = ans
 			return check(tiktaktoe)
 		}
+
+		DiagCheckStr = append(DiagCheckStr, board[i][i])
+		RevDiagCheckStr = append(RevDiagCheckStr, board[i][tiktaktoe.lim-i-1])
+	}
+
+	//Check Diagonal
+	if res, ans := winner(DiagCheckStr, tiktaktoe); res {
+		tiktaktoe.winner = ans
+		check(tiktaktoe)
+	}
+
+	if res, ans := winner(RevDiagCheckStr, tiktaktoe); res {
+		tiktaktoe.winner = ans
+		check(tiktaktoe)
 	}
 
 	//Check Columns
 	for i := 0; i < tiktaktoe.lim; i++ {
-		checkStr = []string{}
 		for j := 0; j < tiktaktoe.lim; j++ {
-			checkStr = append(checkStr, board[i][j])
+			ColCheckStr = append(ColCheckStr, board[j][i])
 		}
-		if res, ans := winner(checkStr, tiktaktoe); res {
+		if res, ans := winner(ColCheckStr, tiktaktoe); res {
 			tiktaktoe.winner = ans
 			check(tiktaktoe)
 		}
-	}
-	checkStr = []string{}
-
-	//Check Diagonal
-	for i := 0; i < tiktaktoe.lim; i++ {
-		checkStr = append(checkStr, board[i][i])
-		if res, ans := winner(checkStr, tiktaktoe); res {
-			tiktaktoe.winner = ans
-			check(tiktaktoe)
-		}
-
-	}
-
-	checkStr = []string{}
-	//Check Diagonal
-	for i := 0; i < tiktaktoe.lim; i++ {
-		checkStr = append(checkStr, board[i][tiktaktoe.lim-i-1])
-		if res, ans := winner(checkStr, tiktaktoe); res {
-			tiktaktoe.winner = ans
-			check(tiktaktoe)
-		}
-
 	}
 
 	return false
@@ -118,7 +122,8 @@ func freeSpaces(tiktaktoe *game) [][]int {
 	for i := 0; i < tiktaktoe.lim; i++ {
 		for j := 0; j < tiktaktoe.lim; j++ {
 			holder := []int{}
-			if len(board[i][j]) == 0 {
+			if board[i][j] != "X" || board[i][j] != "O" {
+				fmt.Println(board[i][j])
 				holder = append(holder, i)
 				holder = append(holder, j)
 				res = append(res, holder)
@@ -128,31 +133,85 @@ func freeSpaces(tiktaktoe *game) [][]int {
 	return res
 }
 
-func Move(tiktaktoe *game) int {
-	choices := freeSpaces(tiktaktoe)
-	numberOfChoices := len(choices)
-	if numberOfChoices > 0 {
-		res := choices[rand.Intn(len(choices))]
-
-		if tiktaktoe.turn == true {
-			tiktaktoe.board[res[0]][res[1]] = "X"
-			tiktaktoe.turn = false
-			return len(choices)
-		}
-
-		if tiktaktoe.turn == false {
-			tiktaktoe.board[res[0]][res[1]] = "O"
-			tiktaktoe.turn = true
-			return len(choices)
-		}
-		return len(choices)
+func mark(tiktaktoe *game, x, y int) {
+	if tiktaktoe.turn {
+		tiktaktoe.board[x][y] = "X"
+		tiktaktoe.turn = false
+		return
 	}
+
+	if !tiktaktoe.turn {
+		tiktaktoe.board[x][y] = "O"
+		tiktaktoe.turn = true
+		return
+	}
+}
+
+func findPos(tiktaktoe *game, x int) (i, j int) {
+	i = x / tiktaktoe.lim
+	if (x % tiktaktoe.lim) == 0 {
+		i--
+	}
+	j = x - (i * tiktaktoe.lim)
+	j--
+	return
+}
+
+func randomMove(tiktaktoe *game) int {
+	fmt.Println(tiktaktoe.choices)
+	for i, _ := range tiktaktoe.choices {
+		return i
+	}
+	return -1
+}
+
+func Move(tiktaktoe *game) int {
+	n := len(tiktaktoe.choices)
+	if n > 0 {
+		var choice int
+		if tiktaktoe.turn {
+			choice = randomMove(tiktaktoe)
+		}
+
+		if !tiktaktoe.turn {
+			choice = UserInput(tiktaktoe)
+		}
+
+		if choice > 0 {
+			delete(tiktaktoe.choices, choice)
+			res_i, res_j := findPos(tiktaktoe, choice)
+			fmt.Println(res_i, res_j)
+			mark(tiktaktoe, res_i, res_j)
+		}
+		return n
+	}
+
 	return 0
+}
+
+func UserInput(tiktaktoe *game) int {
+	fmt.Println(tiktaktoe.board)
+	fmt.Println("Enter move position:")
+	input := bufio.NewScanner(os.Stdin)
+	input.Scan()
+	user_pos, err := strconv.Atoi(input.Text())
+	if err != nil {
+		fmt.Println("Invalid Input please choose an available spot!")
+		return -1
+	}
+
+	if _, ok := tiktaktoe.choices[user_pos]; !ok {
+		fmt.Println("That Spot is taken! please choose an available spot!")
+		return -1
+	}
+
+	return user_pos
+
 }
 
 func main() {
 	var tiktaktoe game
-	tiktaktoe.lim = 3
+	tiktaktoe.lim = 5
 	tiktaktoe = makeBoard(&tiktaktoe)
 
 	for {
@@ -171,4 +230,5 @@ func main() {
 	}
 
 	fmt.Println(tiktaktoe.board)
+	// fmt.Println(findPos(&tiktaktoe, 5))
 }
